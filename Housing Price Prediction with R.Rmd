@@ -1,0 +1,352 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+```{r}
+# load packages
+library(mlbench)
+library(caret)
+library(corrplot)
+# attach the BostonHousing dataset
+data(BostonHousing)
+```
+```{r}
+# Split out validation dataset
+# create a list of 80% of the rows in the original dataset we can use for training
+set.seed(7)
+validationIndex <- createDataPartition(BostonHousing$medv, p=0.80, list=FALSE)
+# select 20% of the data for validation
+validation <- BostonHousing[-validationIndex,]
+# use the remaining 80% of data to training and testing the models
+dataset <- BostonHousing[validationIndex,]
+```
+
+```{r}
+# dimensions of dataset
+dim(dataset)
+```
+```{r}
+# list types for each attribute
+sapply(dataset, class)
+```
+```{r}
+# take a peek at the first 5 rows of the data
+head(dataset, n=20)
+```
+```{r}
+# summarize attribute distributions
+summary(dataset)
+```
+```{r}
+#Let's go ahead and convert chas to a numeric attribute.
+dataset[,4] <- as.numeric(as.character(dataset[,4]))
+```
+```{r}
+cor(dataset[,1:13])
+```
+
+<!-- This is interesting. We can see that many of the attributes have a strong correlation (e.g.
+> 0:70 or < 0:70).
+For example:
+ nox and indus with 0.77.
+ dist and indus with 0.71.
+ tax and indus with 0.72.
+ age and nox with 0.72.
+dist and nox with 0.76.``` -->
+  
+```{r}
+# histograms each attribute
+par(mfrow=c(2,7))
+for(i in 1:13) {
+hist(dataset[,i], main=names(dataset)[i])
+}
+```
+
+```{r}
+# density plot for each attribute
+par(mfrow=c(2,7))
+for(i in 1:13) {
+plot(density(dataset[,i]), main=names(dataset)[i])
+}
+```
+
+This perhaps adds more evidence to our suspicion about possible exponential and bimodal
+distributions. It also looks like nox, rm and lsat may be skewed Gaussian distributions, which
+might be helpful later with transforms.
+
+
+```{r}
+# boxplots for each attribute
+par(mfrow=c(2,7))
+for(i in 1:13) {
+boxplot(dataset[,i], main=names(dataset)[i])}
+```
+This helps point out the skew in many distributions so much so that data looks like outliers
+(e.g. beyond the whisker of the plots).
+
+# Multi modal Data Visualizations
+```{r}
+# scatterplot matrix
+pairs(dataset[,1:13])
+```
+We can see that some of the higher correlated attributes do show good structure in their
+relationship. Not linear, but nice predictable curved relationships.
+```{r}
+# correlation plot
+correlations <- cor(dataset[,1:13])
+corrplot(correlations, method="circle")
+```
+
+The larger darker blue dots confirm the positively correlated attributes we listed early
+(not the diagonal). We can also see some larger darker red dots that suggest some negatively
+correlated attributes. For example tax and rad. These too may be candidates for removal to
+better improve accuracy of models later on.
+
+
+
+
+
+
+
+There is a lot of structure in this dataset. We need to think about transforms that we could use
+later to better expose the structure which in turn may improve modeling accuracy. So far it
+would be worth trying:
+ Feature selection and removing the most correlated attributes.
+ Normalizing the dataset to reduce the eect of diering scales.
+ Standardizing the dataset to reduce the eects of diering distributions.
+ Box-Cox transform to see if 
+attening out some of the distributions improves accuracy.
+
+
+
+
+#Evaluate Algorithms:Baseline
+```{r}
+# Run algorithms using 10-fold cross validation
+trainControl <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+```
+```{r}
+# LM
+set.seed(7)
+fit.lm <- train(medv~., data=dataset, method="lm", metric=metric, preProc=c("center",
+"scale"), trControl=trainControl)
+# GLM
+set.seed(7)
+fit.glm <- train(medv~., data=dataset, method="glm", metric=metric, preProc=c("center",
+"scale"), trControl=trainControl)
+# GLMNET
+set.seed(7)
+fit.glmnet <- train(medv~., data=dataset, method="glmnet", metric=metric,
+preProc=c("center", "scale"), trControl=trainControl)
+# SVM
+set.seed(7)
+fit.svm <- train(medv~., data=dataset, method="svmRadial", metric=metric,
+preProc=c("center", "scale"), trControl=trainControl)
+# CART
+set.seed(7)
+grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+fit.cart <- train(medv~., data=dataset, method="rpart", metric=metric, tuneGrid=grid,
+preProc=c("center", "scale"), trControl=trainControl)
+# KNN
+set.seed(7)
+fit.knn <- train(medv~., data=dataset, method="knn", metric=metric, preProc=c("center",
+"scale"), trControl=trainControl)
+```
+
+Let's compare the algorithms. We will use a
+simple table of results to get a quick idea of what is going on. We will also use a dot plot to
+show the 95% condence level for the estimated metrics.
+```{r}
+# Compare algorithms
+results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet, SVM=fit.svm,
+CART=fit.cart, KNN=fit.knn))
+summary(results)
+dotplot(results)
+```
+It looks like SVM has the lowest RMSE, followed closely by the other non-linear algorithms
+CART and KNN. The linear regression algorithms all appear to be in the same ball park and
+slightly worse error.
+We can also see that SVM and the other non-linear algorithms have the best t for the data
+in their R2 measures.
+
+Perhaps the worse performance of the
+linear regression algorithms has something to do with the highly correlated attributes. Let's
+look at that.
+
+# Evaluate Algorithms: Feature Selection
+
+In this step we will remove the highly correlated
+attributes and see what eect that has on the evaluation metrics. We can nd and remove the
+highly correlated attributes using the findCorrelation() function from the caret package as
+follows:
+```{r}
+# remove correlated attributes
+# find attributes that are highly corrected
+set.seed(7)
+cutoff <- 0.70
+correlations <- cor(dataset[,1:13])
+highlyCorrelated <- findCorrelation(correlations, cutoff=cutoff)
+for (value in highlyCorrelated) {
+print(names(dataset)[value])
+}
+# create a new dataset without highly corrected features
+datasetFeatures <- dataset[,-highlyCorrelated]
+dim(datasetFeatures)
+```
+
+
+We can see that we have dropped 4 attributes: indus, box, tax and dis.
+Now let's try the same 6 algorithms from our base line experiment.
+```{r}
+# Run algorithms using 10-fold cross validation
+trainControl <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+# lm
+set.seed(7)
+fit.lm <- train(medv~., data=datasetFeatures, method="lm", metric=metric,
+preProc=c("center", "scale"), trControl=trainControl)
+# GLM
+set.seed(7)
+fit.glm <- train(medv~., data=datasetFeatures, method="glm", metric=metric,
+preProc=c("center", "scale"), trControl=trainControl)
+# GLMNET
+set.seed(7)
+fit.glmnet <- train(medv~., data=datasetFeatures, method="glmnet", metric=metric,
+preProc=c("center", "scale"), trControl=trainControl)
+# SVM
+set.seed(7)
+fit.svm <- train(medv~., data=datasetFeatures, method="svmRadial", metric=metric,
+preProc=c("center", "scale"), trControl=trainControl)
+# CART
+set.seed(7)
+grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+fit.cart <- train(medv~., data=datasetFeatures, method="rpart", metric=metric,
+tuneGrid=grid, preProc=c("center", "scale"), trControl=trainControl)
+# KNN
+set.seed(7)
+fit.knn <- train(medv~., data=datasetFeatures, method="knn", metric=metric,
+preProc=c("center", "scale"), trControl=trainControl)
+# Compare algorithms
+feature_results <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet, SVM=fit.svm,
+CART=fit.cart, KNN=fit.knn))
+
+summary(feature_results)
+dotplot(feature_results)
+```
+Comparing the results, we can see that this has made the RMSE worse for the linear and the
+non-linear algorithms. The correlated attributes we removed are contributing to the accuracy of
+the models.
+
+
+#Evaluate Algorithms: Box-Cox Transform
+
+We know that some of the attributes have a skew and others perhaps have an exponential
+distribution.Let's try using
+this transform to rescale the original data and evaluate the eect on the same 6 algorithms. We
+will also leave in the centering and scaling for the benet of the instance based method.
+```{r}
+# Run algorithms using 10-fold cross validation
+trainControl <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+# lm
+set.seed(7)
+fit.lm <- train(medv~., data=dataset, method="lm", metric=metric, preProc=c("center",
+"scale", "BoxCox"), trControl=trainControl)
+# GLM
+set.seed(7)
+fit.glm <- train(medv~., data=dataset, method="glm", metric=metric, preProc=c("center",
+"scale", "BoxCox"), trControl=trainControl)
+# GLMNET
+set.seed(7)
+fit.glmnet <- train(medv~., data=dataset, method="glmnet", metric=metric,
+preProc=c("center", "scale", "BoxCox"), trControl=trainControl)
+# SVM
+set.seed(7)
+fit.svm <- train(medv~., data=dataset, method="svmRadial", metric=metric,
+preProc=c("center", "scale", "BoxCox"), trControl=trainControl)
+# CART
+set.seed(7)
+grid <- expand.grid(.cp=c(0, 0.05, 0.1))
+fit.cart <- train(medv~., data=dataset, method="rpart", metric=metric, tuneGrid=grid,
+preProc=c("center", "scale", "BoxCox"), trControl=trainControl)
+# KNN
+set.seed(7)
+fit.knn <- train(medv~., data=dataset, method="knn", metric=metric, preProc=c("center",
+"scale", "BoxCox"), trControl=trainControl)
+# Compare algorithms
+transformResults <- resamples(list(LM=fit.lm, GLM=fit.glm, GLMNET=fit.glmnet, SVM=fit.svm,
+CART=fit.cart, KNN=fit.knn))
+
+summary(transformResults)
+dotplot(transformResults)
+```
+
+We can see that this indeed decrease the RMSE and increased the R2 on all except the
+CART algorithms. The RMSE of SVM dropped to an average of 3.761.
+
+#Ensemble Methods
+
+We can try some ensemble methods on the problem and see if we can get a further decrease in
+our RMSE. In this section we will look at some boosting and bagging techniques for decision
+trees.
+```{r}
+# try ensembles
+trainControl <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+
+# Random Forest
+set.seed(7)
+fit.rf <- train(medv~., data=dataset, method="rf", metric=metric, preProc=c("BoxCox"),
+trControl=trainControl)
+# Stochastic Gradient Boosting
+set.seed(7)
+fit.gbm <- train(medv~., data=dataset, method="gbm", metric=metric, preProc=c("BoxCox"),
+trControl=trainControl, verbose=FALSE)
+
+# Compare algorithms
+ensembleResults <- resamples(list(RF=fit.rf, GBM=fit.gbm))
+summary(ensembleResults)
+dotplot(ensembleResults)
+```
+we can see that svm still outperforms both the ensemble methods.
+
+
+#Finalizing Results after Tuning
+
+We can improve the accuracy of the well performing algorithms by tuning their parameters. In
+this section we will look at tuning the parameters of SVM with a Radial Basis Function (RBF).
+with more time it might be worth exploring tuning of the parameters for CART and KNN
+Let's look at the default
+parameters already adopted.
+```{r}
+print(fit.svm)
+```
+Let's design a grid search around a C value of 1. We might see a small trend of decreasing
+RMSE with increasing C, so lets try all integer C values between 1 and 10. Another parameter
+that caret lets us tune is the sigma parameter. This is a smoothing parameter. Good sigma
+values are often start around 0.1, so we will try numbers before and after.
+```{r}
+# tune SVM sigma and C parametres
+trainControl <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "RMSE"
+set.seed(7)
+grid <- expand.grid(.sigma=c(0.025, 0.05, 0.1, 0.15), .C=seq(1, 10, by=1))
+fit.svm <- train(medv~., data=dataset, method="svmRadial", metric=metric, tuneGrid=grid,
+preProc=c("BoxCox"), trControl=trainControl)
+print(fit.svm)
+plot(fit.svm)
+```
+We can see that the sigma values 
+flatten out with larger C cost constraints. It looks like we
+might do well with a sigma of 0.1 and a C of 9. This gives us a respectable RMSE of 3.080897 and R^2 of 0.8682378
