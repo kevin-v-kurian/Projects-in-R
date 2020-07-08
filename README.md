@@ -1,5 +1,7 @@
 # Projects-in-R
+
 1)House price prediction
+
     we used regression predictive modeling machine learning problem
     from end-to-end using R. Specifically, the steps covered were:
     1. Problem Definition (Boston house price data).
