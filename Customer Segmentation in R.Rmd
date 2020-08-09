@@ -410,7 +410,7 @@ print(Cluster_size_visz)
 
 
 Summary - KMeans Segmentation
-This short article showcased the importance of using data mining techniques for customer-centric strategies based on purchase behavior. Customers of the business have been clearly identified into 3 using KMeans clustering algorithm.
+in this project i have showcased the importance of using data mining techniques for customer-centric strategies based on purchase behavior. Customers of the business have been clearly identified into 3 using KMeans clustering algorithm.
 
 The clusters created can help the business understand its customers in terms of revenue generated, frequency of purchase and days of inactivity. Therefore, perform marketing strategies to retain and/or improve the profitability of different type of customers.
 
